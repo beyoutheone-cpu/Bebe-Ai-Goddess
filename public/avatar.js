@@ -14,9 +14,9 @@ export async function initAvatar(container) {
 
   let renderer;
   try {
-    const mobile = matchMedia("(max-width: 720px)").matches;
+    const mobile = matchMedia("(max-width: 640px)").matches;
     renderer = new THREE.WebGLRenderer({ canvas: probe, context: gl, antialias: !mobile, alpha: true, powerPreference: "low-power" });
-    renderer.setPixelRatio(mobile ? 1 : Math.min(devicePixelRatio || 1, 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 2 : 1.5));
     renderer.setClearColor(0x000000, 0);
   } catch { return state; }
 
@@ -128,7 +128,10 @@ export async function initAvatar(container) {
 
   let onScreen = true, pageVisible = true;
   new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }).observe(container);
-  document.addEventListener("visibilitychange", () => { pageVisible = !document.hidden; });
+  const syncPage = () => { pageVisible = !document.hidden; };
+  document.addEventListener("visibilitychange", syncPage);
+  addEventListener("pagehide", () => { pageVisible = false; });
+  addEventListener("pageshow", syncPage);
 
   const clock = new THREE.Clock();
   let blinkAt = 1.6;

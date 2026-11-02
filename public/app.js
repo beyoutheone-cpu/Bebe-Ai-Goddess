@@ -27,7 +27,9 @@ function addMessage(role, content, products = []) {
     }
     b.append(ul);
   }
-  messagesEl.appendChild(b); messagesEl.scrollTop = messagesEl.scrollHeight;
+  messagesEl.appendChild(b);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
 }
 function resetChat() {
   history = []; convId = null; messagesEl.innerHTML = "";
@@ -135,5 +137,21 @@ mic.addEventListener("click", () => {
     onEnd: () => { stopListening(); input.focus(); },
   });
 });
+function syncViewport() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  const top = vv ? vv.offsetTop : 0;
+  document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
+  document.documentElement.style.setProperty("--vvtop", Math.round(top) + "px");
+  const narrow = matchMedia("(max-width: 640px)").matches || document.body.classList.contains("embed");
+  document.body.classList.toggle("short-vv", narrow && h < 560);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+if (window.visualViewport) {
+  visualViewport.addEventListener("resize", syncViewport);
+  visualViewport.addEventListener("scroll", syncViewport);
+}
+addEventListener("resize", syncViewport);
+syncViewport();
 resetChat();
 initAuth();
