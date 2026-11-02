@@ -13,7 +13,14 @@
   var panel = document.createElement("div"); panel.id = "bebe-panel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Bebe AI chat");
   var loaded = false;
   btn.addEventListener("click", function () {
-    if (!loaded) { var f = document.createElement("iframe"); f.src = origin + "/?embed=1"; f.title = "Bebe AI chat"; f.allow = "microphone"; panel.appendChild(f); loaded = true; }
+    if (!loaded) {
+      var f = document.createElement("iframe");
+      f.src = origin + "/?embed=1"; f.title = "Bebe AI chat";
+      // The chat page sends Permissions-Policy microphone=(self). This allow
+      // delegates the mic into that cross-origin frame from the storefront.
+      f.allow = "microphone"; f.setAttribute("allow", "microphone");
+      panel.appendChild(f); loaded = true;
+    }
     var open = panel.classList.toggle("open"); btn.setAttribute("aria-expanded", String(open)); btn.textContent = open ? "\u00d7" : "\u2726";
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && panel.classList.contains("open")) btn.click(); });

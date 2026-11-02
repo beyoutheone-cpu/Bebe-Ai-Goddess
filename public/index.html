@@ -50,9 +50,10 @@
           <label class="sr-only" for="prompt">Message Bebe AI</label>
           <div class="composer">
             <textarea id="prompt" rows="2" maxlength="2000" placeholder="Ask about styles, products, sizing, or running your store…" required></textarea>
-            <button id="mic" type="button" class="icon" title="Speak your message" hidden>🎙️</button>
+            <button id="mic" type="button" class="icon" title="Speak your message" aria-pressed="false">🎙️</button>
             <button id="send" type="submit">Send ↑</button>
           </div>
+          <p id="voice-status" class="voice-status" role="status"></p>
           <div class="composer-foot"><span id="mode-note">Guest chats aren't saved — they disappear when you close the page.</span><span id="count">0/2000</span></div>
         </form>
       </section>
