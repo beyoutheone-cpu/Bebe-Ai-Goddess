@@ -26,6 +26,13 @@ app.use(helmet({
   strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true },
   referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
+// Helmet defaults CORP to same-origin, which blocks the storefront from loading this
+// file as a classic script. The widget inlines its CSS and only opens an iframe of
+// this same deployment, so no other static asset is fetched cross-origin.
+app.use((req, res, next) => {
+  if (req.path === "/widget.js") res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use((req, res, next) => { res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()"); next(); });
 app.use("/api", (req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 app.use(express.json({ limit: cfg.maxBodyBytes }));
