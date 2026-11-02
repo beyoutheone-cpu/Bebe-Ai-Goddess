@@ -1,5 +1,5 @@
 // Multi-provider LLM chain. All providers use the OpenAI-compatible /chat/completions API.
-// Same system prompt, tools, max_tokens and budgets for every provider; fallback on 429/quota/5xx/timeout.
+// Same system prompt, tools, max_tokens and budgets for every provider; fallback on 400/429/quota/5xx/timeout.
 import { cfg } from "./config.js";
 import { TOOL_DEFS, runTool } from "./tools.js";
 import { searchProducts } from "./products.js";
@@ -24,26 +24,33 @@ export function providerChain() {
   return [...new Set(order)].map((name) => ({ name, ...DEFS[name]() })).filter((p) => p.key);
 }
 
-class Fallback extends Error { constructor(status, code) { super("fallback"); this.status = status; this.code = code; } }
+class Fallback extends Error { constructor(status, code, detail = "") { super("fallback"); this.status = status; this.code = code; this.detail = detail; } }
 class ToolsUnsupported extends Error {}
+
+// Gemini 3.5 Flash-Lite, 3.6+, and later reject temperature/top_p/top_k with HTTP 400.
+const rejectsSampling = (model) => /^gemini-(?:3\.(?:[5-9]|[1-9]\d)|[4-9])/.test(model);
 
 async function call(p, body) {
   const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), cfg.llmTimeoutMs);
   let r;
+  const payload = { model: p.model, max_tokens: cfg.maxTokens, ...p.extra, ...body };
+  if (!rejectsSampling(p.model)) payload.temperature = 0.6;
   try {
     r = await fetch(`${p.base.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: ctrl.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
-      body: JSON.stringify({ model: p.model, max_tokens: cfg.maxTokens, temperature: 0.6, ...p.extra, ...body }) });
+      body: JSON.stringify(payload) });
   } catch { throw new Fallback(0, "timeout_or_network"); } finally { clearTimeout(t); }
   const data = await r.json().catch(() => ({}));
   const err = data?.error || data?.[0]?.error || {};
   const code = String(err.code || err.status || err.type || "");
+  const detail = String(err.message || "").slice(0, 180);
   if (!r.ok) {
-    const msg = String(err.message || "").toLowerCase();
+    const msg = detail.toLowerCase();
     if (body.tools && r.status === 400 && /tool|function/.test(msg + code)) throw new ToolsUnsupported();
-    // 429, quota, 5xx, auth/model errors (404/401/403) -> try next provider
-    if (r.status === 429 || r.status >= 500 || [401, 403, 404, 408].includes(r.status) || /quota|credit|insufficient/i.test(code)) throw new Fallback(r.status, code);
-    throw Object.assign(new Error("upstream"), { status: r.status, code });
+    // 400/429, quota, 5xx, auth/model errors (404/401/403) -> try next provider.
+    // A 400 here is provider-specific (sampling params, model); it must not sink the whole chat.
+    if (r.status === 400 || r.status === 429 || r.status >= 500 || [401, 403, 404, 408].includes(r.status) || /quota|credit|insufficient/i.test(code)) throw new Fallback(r.status, code, detail);
+    throw Object.assign(new Error("upstream"), { status: r.status, code, detail });
   }
   return data;
 }
@@ -99,7 +106,7 @@ export async function chatWithFallback(baseConvo, found, addTokens) {
       return { reply, provider: p.name };
     } catch (e) {
       lastErr = e;
-      console.warn(JSON.stringify({ evt: "llm_fallback", provider: p.name, model: p.model, status: e.status ?? null, code: e.code || "" }));
+      console.warn(JSON.stringify({ evt: "llm_fallback", provider: p.name, model: p.model, status: e.status ?? null, code: e.code || "", detail: e.detail || "" }));
       if (!(e instanceof Fallback)) break;
     }
   }
