@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<title>Bebe AI — Owner Admin</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="shell">
+  <h1>Bebe <span>Admin</span></h1>
+  <p class="disclosure">Owner-only, read-only store insight. Access requires a Supabase sign-in with an allowlisted owner email; it's checked server-side on every request.</p>
+  <form id="f" class="signin"><label for="email">Owner email</label><div class="row"><input id="email" type="email" required autocomplete="email"><button>Send magic link</button></div><p id="msg" class="note" role="status"></p></form>
+  <div id="panel" hidden><p id="who" class="note"></p><button id="load" type="button">Load store insights</button> <button id="out" type="button" class="ghost">Sign out</button><pre id="out-data" class="disclosure" style="white-space:pre-wrap"></pre></div>
+</main><script type="module" src="/admin/admin.js"></script></body></html>

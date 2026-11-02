@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: bebe-ai
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - { key: LLM_PROVIDERS, value: "gemini,groq,openai" }
+      - { key: DAILY_REQUEST_LIMIT, value: "300" }
+      - { key: DAILY_TOKEN_LIMIT, value: "200000" }
+      - { key: MONTHLY_REQUEST_LIMIT, value: "6000" }
+      - { key: SUPABASE_URL, value: "https://kngvypwggomudcdgttss.supabase.co" }
+      - { key: SUPABASE_ANON_KEY, value: "sb_publishable_ULWYqFsYKgVfr_W-CgSeqg_UZzs3r4d" }
+      - { key: OWNER_EMAIL, value: "beyoutheone@aol.com" }
+      - { key: GEMINI_API_KEY, sync: false }
+      - { key: GROQ_API_KEY, sync: false }
+      - { key: OPENAI_API_KEY, sync: false }
+      - { key: BEBE_RPC_TOKEN, sync: false }
