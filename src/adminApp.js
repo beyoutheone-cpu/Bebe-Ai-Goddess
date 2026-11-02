@@ -2,12 +2,13 @@
 // The public chat (src/app.js) never imports this file or src/admin/*.
 import express from "express";
 import helmet from "helmet";
+import { TRUST_PROXY_HOPS } from "./clientIp.js";
 import { requireOwner } from "./admin/auth.js";
 import { shopifyEnabled, storeInsights } from "./admin/shopify.js";
 
 export const adminApp = express();
 adminApp.disable("x-powered-by");
-adminApp.set("trust proxy", 1);
+adminApp.set("trust proxy", TRUST_PROXY_HOPS);
 adminApp.use(helmet({ contentSecurityPolicy: false, frameguard: { action: "deny" } }));
 adminApp.use((req, res, next) => { res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Robots-Tag", "noindex"); next(); });
 adminApp.use(express.json({ limit: "8kb" }));

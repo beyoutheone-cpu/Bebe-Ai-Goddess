@@ -7,13 +7,14 @@ import { SYSTEM_PROMPT } from "./prompt.js";
 import { userFromToken, storageEnabled } from "./db.js";
 import { chatWithFallback, providerChain } from "./llm.js";
 import { checkRate, budgetStatus, recordUsage, hashIp } from "./limits.js";
+import { TRUST_PROXY_HOPS, clientIp } from "./clientIp.js";
 import { ensureProducts, productCount } from "./products.js";
 import { runTool } from "./tools.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const app = express();
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+app.set("trust proxy", TRUST_PROXY_HOPS);
 const supa = cfg.supabaseUrl ? new URL(cfg.supabaseUrl).origin : "";
 app.use(helmet({
   contentSecurityPolicy: { directives: {
@@ -58,7 +59,7 @@ app.post("/api/chat", async (req, res, next) => {
     const last = history[history.length - 1];
     if (!last || last.role !== "user") return say(res, 400, "Please send a message.", { error: "empty" });
 
-    const ipHash = hashIp(req.ip || "unknown");
+    const ipHash = hashIp(clientIp(req));
     const token = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
     const userId = token ? await userFromToken(token) : null;
     const rl = await checkRate(ipHash, userId);
