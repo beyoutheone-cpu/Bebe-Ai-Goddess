@@ -27,8 +27,10 @@ export function providerChain() {
 class Fallback extends Error { constructor(status, code) { super("fallback"); this.status = status; this.code = code; } }
 class ToolsUnsupported extends Error {}
 
-async function call(p, body) {
-  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), cfg.llmTimeoutMs);
+async function call(p, body, deadline = Infinity) {
+  const left = Math.min(cfg.llmTimeoutMs, deadline - Date.now());
+  if (left < 1500) throw new Fallback(0, "deadline");
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), left);
   let r;
   try {
     r = await fetch(`${p.base.replace(/\/$/, "")}/chat/completions`, { method: "POST", signal: ctrl.signal,
@@ -40,7 +42,8 @@ async function call(p, body) {
   const code = String(err.code || err.status || err.type || "");
   if (!r.ok) {
     const msg = String(err.message || "").toLowerCase();
-    if (body.tools && r.status === 400 && /tool|function/.test(msg + code)) throw new ToolsUnsupported();
+    // Any 400 while tools are in play (Groq tool_use_failed, Gemini function-call 400s) -> retry without tools.
+    if (body.tools && r.status === 400) throw new ToolsUnsupported();
     // 429, quota, 5xx, auth/model errors (404/401/403) -> try next provider
     if (r.status === 429 || r.status >= 500 || [401, 403, 404, 408].includes(r.status) || /quota|credit|insufficient/i.test(code)) throw new Fallback(r.status, code);
     throw Object.assign(new Error("upstream"), { status: r.status, code });
@@ -48,9 +51,10 @@ async function call(p, body) {
   return data;
 }
 
-async function withTools(p, convo, found, addTokens) {
+async function withTools(p, convo, found, addTokens, deadline) {
   for (let round = 0; round < 3; round++) {
-    const data = await call(p, { messages: convo, ...(round < 2 ? { tools: TOOL_DEFS, tool_choice: "auto" } : {}) });
+    // Keep the tool definitions on the last round (tool_choice "none") so providers can still parse the earlier tool turns.
+    const data = await call(p, { messages: convo, tools: TOOL_DEFS, tool_choice: round < 2 ? "auto" : "none" }, deadline);
     await addTokens(Number(data.usage?.total_tokens) || 0);
     const msg = data.choices?.[0]?.message || {};
     if (msg.tool_calls?.length) {
@@ -66,42 +70,72 @@ async function withTools(p, convo, found, addTokens) {
   return "";
 }
 
+const STOP = /\b(show|me|find|some|any|i|want|need|please|do|you|have|the|a|an|hi|hello|hey|bebe|can|could|would|recommend|recommendation|suggest|from|star|for|with|and|what|something|good|nice|cute|my|is|are|to|of)\b/ig;
+export function parseShopperQuery(q) {
+  const maxPrice = Number((q.match(/(?:under|below|less than|<)\s*\$?\s*(\d+(?:\.\d+)?)/i) || [])[1]) || null;
+  const terms = q.replace(/(?:under|below|less than|<)\s*\$?\s*\d+(?:\.\d+)?/ig, " ").replace(STOP, " ").replace(/\s+/g, " ").trim();
+  return { terms: terms.slice(0, 200), maxPrice };
+}
+// Keyword search used when tool calling is unavailable. "accessory" style words are expanded to concrete product words.
+export async function keywordProducts(q, n = 5) {
+  const { terms, maxPrice } = parseShopperQuery(q);
+  const expanded = /accessor/i.test(terms) ? `${terms} choker necklace bag earring ring belt gloves hat jewelry collar harness` : terms;
+  return (await searchProducts(expanded, n, maxPrice)) || [];
+}
+const addFound = (found, hits) => hits.forEach((h) => { if (!found.some((f) => f.url === h.url)) found.push(h); });
+
 // Fallback for providers/models without working tool calling: simple retrieval injected into the prompt.
-async function withRetrieval(p, convo, found, addTokens) {
+async function withRetrieval(p, convo, found, addTokens, deadline) {
   const q = [...convo].reverse().find((m) => m.role === "user")?.content || "";
-  const maxPrice = Number((q.match(/(?:under|below|less than|<)\s*\$?\s*(\d+(?:\.\d+)?)/i) || [])[1]) || undefined;
-  const terms = q.replace(/(?:under|below|less than|<)\s*\$?\s*\d+(?:\.\d+)?/ig, " ").replace(/\b(show|me|find|some|any|i|want|need|please|do|you|have|the|a|an)\b/ig, " ").trim();
-  const hits = (await searchProducts(terms.slice(0, 200), 5, maxPrice ?? null)) || [];
-  hits.forEach((h) => { if (!found.some((f) => f.url === h.url)) found.push(h); });
-  let ctx = "Store products matching the shopper's message (only link these real URLs):\n" +
+  const hits = await keywordProducts(q);
+  let ctx = "Tool calling is unavailable for this reply: do not call any tools, answer directly in text.\n\nStore products matching the shopper's message (only link these real URLs):\n" +
     (hits.map((h) => `- ${h.title} (${h.price}) ${h.url}`).join("\n") || "(none found)");
   const topic = /return|refund|exchange/i.test(q) ? "refunds_returns" : /ship|deliver/i.test(q) ? "shipping" : /size|fit/i.test(q) ? "size_guide" : null;
   if (topic) {
     const pol = await runTool(topic === "size_guide" ? "get_size_guide" : "get_store_policy", JSON.stringify(topic === "size_guide" ? {} : { topic }), []);
     ctx += `\n\nStore page excerpt (${topic}):\n` + JSON.stringify(pol).slice(0, 4000);
   }
-  const msgs = [convo[0], { role: "system", content: ctx }, ...convo.slice(1)];
-  const data = await call(p, { messages: msgs });
+  const msgs = [convo[0], { role: "system", content: ctx }, ...convo.filter((m) => m.role === "user" || m.role === "assistant")];
+  const data = await call(p, { messages: msgs }, deadline);
   await addTokens(Number(data.usage?.total_tokens) || 0);
-  return data.choices?.[0]?.message?.content || "";
+  const reply = data.choices?.[0]?.message?.content || "";
+  // Only publish these hits once this provider actually answered. A failed retrieval
+  // must not attach its catalog guess to a later provider's reply.
+  if (reply) addFound(found, hits);
+  return reply;
 }
 
-export async function chatWithFallback(baseConvo, found, addTokens) {
+export async function chatWithFallback(baseConvo, found, addTokens, budgetMs = Number(process.env.CHAT_DEADLINE_MS) || 25000) {
   const chain = providerChain();
+  const deadline = Date.now() + budgetMs;
   let lastErr;
   for (const p of chain) {
     const t0 = Date.now();
+    let mode = "tools";
     try {
-      let reply, mode = "tools";
-      try { reply = await withTools(p, baseConvo.map((m) => ({ ...m })), found, addTokens); }
-      catch (e) { if (!(e instanceof ToolsUnsupported)) throw e; mode = "retrieval"; reply = await withRetrieval(p, baseConvo, found, addTokens); }
+      let reply;
+      try { reply = await withTools(p, baseConvo.map((m) => ({ ...m })), found, addTokens, deadline); }
+      catch (e) {
+        if (!(e instanceof ToolsUnsupported)) throw e;
+        console.warn(JSON.stringify({ evt: "llm_tools_failed", provider: p.name, model: p.model }));
+        mode = "retrieval"; reply = await withRetrieval(p, baseConvo, found, addTokens, deadline);
+      }
+      if (!reply) throw Object.assign(new Error("empty_reply"), { code: "empty" });
       console.log(JSON.stringify({ evt: "llm_answer", provider: p.name, model: p.model, mode, ms: Date.now() - t0 }));
       return { reply, provider: p.name };
     } catch (e) {
       lastErr = e;
-      console.warn(JSON.stringify({ evt: "llm_fallback", provider: p.name, model: p.model, status: e.status ?? null, code: e.code || "" }));
-      if (!(e instanceof Fallback)) break;
+      // Always try the next provider; a non-retryable error on one provider says nothing about the others.
+      console.warn(JSON.stringify({ evt: "llm_fallback", provider: p.name, model: p.model, mode, status: e.status ?? null, code: e.code || "" }));
     }
+  }
+  // Last resort: answer from the public catalog without an LLM, so product questions never 502.
+  const q = [...baseConvo].reverse().find((m) => m.role === "user")?.content || "";
+  const hits = found.length ? found.slice(0, 4) : await keywordProducts(q, 4).catch(() => []);
+  if (hits.length) {
+    addFound(found, hits);
+    console.warn(JSON.stringify({ evt: "llm_catalog_fallback", count: hits.length }));
+    return { reply: "Here are some Star pieces I think you'll love 🖤\n" + hits.map((h) => `• ${h.title} — $${h.price}: ${h.url}`).join("\n"), provider: "catalog" };
   }
   throw lastErr || new Error("no_provider");
 }
