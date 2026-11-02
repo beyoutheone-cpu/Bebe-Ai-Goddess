@@ -7,18 +7,40 @@ const memUsage = new Map();
 
 export const hashIp = ip => crypto.createHash("sha256").update(cfg.ipSalt + ip).digest("hex").slice(0, 24);
 
-async function hit(key, windowSec) {
+// Exact sliding-window log, always enforced in-process. Fixed Supabase slots alone let a burst
+// that straddles a minute boundary (e.g. 6 + 6 requests) pass, so both are checked.
+const slide = new Map();
+function slidingHit(k, windowSec, now = Date.now()) {
+  const cutoff = now - windowSec * 1000;
+  const arr = (slide.get(k) || []).filter((t) => t > cutoff);
+  arr.push(now); slide.set(k, arr);
+  if (slide.size > 10000) for (const [key, v] of slide) { if (!v.length || v[v.length - 1] <= now - 3600_000) slide.delete(key); if (slide.size < 5000) break; }
+  return arr.length;
+}
+
+async function storeHit(key, windowSec) {
   const slot = Math.floor(Date.now() / 1000 / windowSec);
   const k = `${key}:${windowSec}:${slot}`;
   if (storageEnabled()) {
-    const { data, error } = await rpc("bebe_rate_hit", { p_key: k, p_window_seconds: windowSec });
-    if (!error) return data;
-    console.error("rate_hit failed", error.message);
+    try {
+      const { data, error } = await rpc("bebe_rate_hit", { p_key: k, p_window_seconds: windowSec });
+      const n = Number(Array.isArray(data) ? data[0] : data);
+      if (!error && Number.isFinite(n)) return n;
+      console.error("rate_hit failed", error?.message || "bad response");
+    } catch (e) { console.error("rate_hit failed", e?.message); }
   }
   const n = (mem.get(k) || 0) + 1; mem.set(k, n);
   if (mem.size > 5000) for (const key of mem.keys()) { mem.delete(key); if (mem.size < 2500) break; }
   return n;
 }
+
+async function hit(key, windowSec) {
+  const local = slidingHit(`${key}:${windowSec}`, windowSec);
+  const shared = await storeHit(key, windowSec);
+  return Math.max(local, shared);
+}
+
+export function _resetRateMemory() { slide.clear(); mem.clear(); }
 
 export async function checkRate(ipHash, userId) {
   const checks = [[`ip:${ipHash}`, 60, cfg.ipPerMinute], [`ip:${ipHash}`, 3600, cfg.ipPerHour]];

@@ -4,7 +4,7 @@ import { getPage, PAGES } from "./pages.js";
 
 export const TOOL_DEFS = [
   { type: "function", function: { name: "search_products", description: "Search Star's public product catalog. Use for any product, outfit or recommendation request.",
-    parameters: { type: "object", properties: { query: { type: "string", description: "keywords, e.g. 'black lace gothic dress'" }, max_price: { type: "number", description: "optional max price in USD" } }, required: ["query"], additionalProperties: false } } },
+    parameters: { type: "object", properties: { query: { type: "string", description: "keywords, e.g. 'black lace gothic dress'" }, max_price: { type: ["number", "null"], description: "optional max price in USD; omit or null for no limit" } }, required: ["query"], additionalProperties: false } } },
   { type: "function", function: { name: "get_size_guide", description: "Get Star's public Size Guide & FAQ page text.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "get_store_policy", description: "Get a public Star store page: refunds/returns, shipping, contact, help center, about, privacy or terms.",
     parameters: { type: "object", properties: { topic: { type: "string", enum: ["refunds_returns", "refund_policy", "shipping", "contact", "help_center", "about", "privacy", "terms"] } }, required: ["topic"], additionalProperties: false } } },
