@@ -88,7 +88,6 @@ const addFound = (found, hits) => hits.forEach((h) => { if (!found.some((f) => f
 async function withRetrieval(p, convo, found, addTokens, deadline) {
   const q = [...convo].reverse().find((m) => m.role === "user")?.content || "";
   const hits = await keywordProducts(q);
-  addFound(found, hits);
   let ctx = "Tool calling is unavailable for this reply: do not call any tools, answer directly in text.\n\nStore products matching the shopper's message (only link these real URLs):\n" +
     (hits.map((h) => `- ${h.title} (${h.price}) ${h.url}`).join("\n") || "(none found)");
   const topic = /return|refund|exchange/i.test(q) ? "refunds_returns" : /ship|deliver/i.test(q) ? "shipping" : /size|fit/i.test(q) ? "size_guide" : null;
@@ -99,7 +98,11 @@ async function withRetrieval(p, convo, found, addTokens, deadline) {
   const msgs = [convo[0], { role: "system", content: ctx }, ...convo.filter((m) => m.role === "user" || m.role === "assistant")];
   const data = await call(p, { messages: msgs }, deadline);
   await addTokens(Number(data.usage?.total_tokens) || 0);
-  return data.choices?.[0]?.message?.content || "";
+  const reply = data.choices?.[0]?.message?.content || "";
+  // Only publish these hits once this provider actually answered. A failed retrieval
+  // must not attach its catalog guess to a later provider's reply.
+  if (reply) addFound(found, hits);
+  return reply;
 }
 
 export async function chatWithFallback(baseConvo, found, addTokens, budgetMs = Number(process.env.CHAT_DEADLINE_MS) || 25000) {
