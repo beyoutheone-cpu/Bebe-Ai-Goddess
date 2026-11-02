@@ -1,5 +1,6 @@
 import { initAvatar } from "/avatar.js";
 import { createVoice } from "/voice.js";
+import { markdownToHtml } from "/markdown.js";
 const $ = s => document.querySelector(s);
 if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");
 let avatar = { set() {} };
@@ -7,12 +8,15 @@ initAvatar($("#avatar")).then(a => { avatar = a; }).catch(() => {});
 const voice = createVoice({ onState: m => avatar.set(m) });
 const GREETING = "Hi, I'm Bebe — Star's AI style assistant ✨ I can find pieces in the shop, explain sizing, returns and shipping, or share tips on running an online store. What are you looking for?";
 const form = $("#chat-form"), input = $("#prompt"), send = $("#send"), messagesEl = $("#messages");
-let history = [], sb = null, session = null, convId = null;
+let history = [], sb = null, session = null, convId = null, talkTimer = 0;
 
 function addMessage(role, content, products = []) {
   const b = document.createElement("div"); b.className = `bubble ${role}`;
-  const n = document.createElement("strong"); n.textContent = role === "user" ? "You" : "Bebe AI";
-  const p = document.createElement("p"); p.textContent = content; b.append(n, p);
+  const n = document.createElement("span"); n.className = "who"; n.textContent = role === "user" ? "You" : "Bebe AI";
+  const body = document.createElement("div"); body.className = "md";
+  if (role === "assistant") body.innerHTML = markdownToHtml(content);
+  else body.textContent = content;
+  b.append(n, body);
   if (products.length) {
     const ul = document.createElement("ul"); ul.className = "products";
     for (const pr of products) {
@@ -54,7 +58,9 @@ async function sendMessage(text) {
     const data = await r.json().catch(() => ({}));
     const reply = data.reply || "Sorry, something went wrong. Please try again.";
     typing.remove(); addMessage("assistant", reply, data.products || []);
-    avatar.set("idle"); voice.speak(reply);
+    clearTimeout(talkTimer);
+    if (voice.enabled && voice.speak(reply)) { /* onstart/onend drive the mouth */ }
+    else { avatar.set("speaking"); talkTimer = setTimeout(() => avatar.set("idle"), 1400); }
     if (r.ok) { history.push({ role: "assistant", content: reply }); save("user", text).then(() => save("assistant", reply)); }
     else history.pop();
   } catch { typing.remove(); avatar.set("idle"); history.pop(); addMessage("assistant", "I couldn't reach the server. Please check your connection and try again."); }
@@ -108,12 +114,26 @@ const speaker = $("#speaker");
 if (!voice.ttsSupported) speaker.hidden = true;
 speaker.addEventListener("click", () => { const on = voice.toggle(); speaker.setAttribute("aria-pressed", String(on)); speaker.textContent = on ? "🔊" : "🔇"; speaker.title = on ? "Mute Bebe's voice" : "Turn Bebe's voice on"; if (!on) avatar.set("idle"); });
 const mic = $("#mic");
-if (voice.sttSupported) {
-  mic.hidden = false;
-  mic.addEventListener("click", () => {
-    mic.classList.add("live"); mic.disabled = true;
-    voice.listen(t => { input.value = (input.value + " " + t).trim().slice(0, 2000); updateCount(); }, () => { mic.classList.remove("live"); mic.disabled = false; input.focus(); });
+const voiceStatus = $("#voice-status");
+mic.hidden = false;
+function setVoiceStatus(text) { if (voiceStatus) voiceStatus.textContent = text || ""; }
+function stopListening() { mic.classList.remove("live"); mic.disabled = false; mic.setAttribute("aria-pressed", "false"); mic.title = "Speak your message"; }
+mic.addEventListener("click", () => {
+  if (!voice.sttSupported) {
+    setVoiceStatus("Voice typing isn't supported in this browser. On iPhone Safari, type your message instead.");
+    return;
+  }
+  mic.classList.add("live"); mic.disabled = true; mic.setAttribute("aria-pressed", "true"); mic.title = "Listening";
+  setVoiceStatus("Listening… speak now.");
+  voice.listen({
+    onText: (t) => { input.value = (input.value + " " + t).trim().slice(0, 2000); updateCount(); setVoiceStatus("Heard you. Press Send when you're ready."); },
+    onError: (err) => {
+      if (err === "not-allowed" || err === "service-not-allowed") setVoiceStatus("Microphone permission was blocked. Allow the microphone for this site and try again.");
+      else if (err === "unsupported") setVoiceStatus("Voice typing isn't supported in this browser. On iPhone Safari, type your message instead.");
+      else if (err !== "aborted") setVoiceStatus("Couldn't hear that. Try again.");
+    },
+    onEnd: () => { stopListening(); input.focus(); },
   });
-}
+});
 resetChat();
 initAuth();
