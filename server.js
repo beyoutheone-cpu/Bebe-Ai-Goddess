@@ -1,0 +1,10 @@
+import "dotenv/config";
+import express from "express";
+const { app } = await import("./src/app.js");
+const { adminApp } = await import("./src/adminApp.js");
+const PORT = Number(process.env.PORT || 3000);
+const root = express();
+root.use((req, res, next) => (req.path.startsWith("/api/admin") ? adminApp(req, res, next) : next()));
+root.get("/admin", (_req, res, next) => { _req.url = "/admin/index.html"; next(); });
+root.use(app);
+root.listen(PORT, () => console.log(`Bebe AI on http://localhost:${PORT}`));

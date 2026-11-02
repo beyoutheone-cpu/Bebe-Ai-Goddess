@@ -1,0 +1,21 @@
+MIGRATION_OK
+A creates conv => [] affected: 1
+A adds msg => [] affected: 1
+B reads conversations => [{"count":0}] affected: 0
+B reads messages => [{"count":0}] affected: 0
+B updates A conv => [] affected: 0
+B deletes msgs => [] affected: 0
+B injects msg into A conv => ERROR: new row violates row-level security policy for table "messages"
+B spoofs user_id=A => ERROR: new row violates row-level security policy for table "conversations"
+B reads usage_counters => ERROR: permission denied for table usage_counters
+B calls add_usage w/ wrong token => ERROR: not authorized
+anon reads server_config => ERROR: permission denied for table bebe_server_config
+anon calls bebe_check_token => ERROR: permission denied for function bebe_check_token
+anon reads conversations => ERROR: permission denied for table conversations
+A reads own convs => [{"title":"A secret chat"}] affected: 0
+A reads own msgs => [{"count":1}] affected: 0
+server(anon+token) add_usage => [{"requests":1,"tokens":120}] affected: 0
+server add_usage oversized tokens => ERROR: invalid usage values
+server rate_hit => [{"hits":1}] affected: 0
+server record_alert => [{"new":true}] affected: 0
+server record_alert dup => [{"new":false}] affected: 0

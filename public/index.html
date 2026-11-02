@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0B1A3A">
+  <meta name="robots" content="noindex">
+  <title>Bebe AI — Star's AI Style Assistant</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div id="avatar" class="avatar" data-mode="idle" aria-hidden="true"><div class="avatar-fallback">★</div></div>
+      <div class="brand">
+        <p class="eyebrow">STAR · GOTHIC · Y2K · HARAJUKU · KAWAII</p>
+        <h1>Bebe <span>AI</span></h1>
+        <p class="sub">Your AI style, shopping &amp; store-know-how helper.</p>
+      </div>
+      <div class="account">
+        <span id="who" class="pill">Guest</span>
+        <button id="signin-btn" type="button" class="ghost" hidden>Sign in to save chats</button>
+        <button id="signout-btn" type="button" class="ghost" hidden>Sign out</button>
+      </div>
+    </header>
+    <form id="signin-form" class="signin" hidden>
+      <label for="email">Email — we'll send you a magic sign-in link (no password)</label>
+      <div class="row"><input id="email" type="email" required autocomplete="email" placeholder="you@example.com"><button type="submit">Send link</button></div>
+      <p id="signin-msg" class="note" role="status"></p>
+    </form>
+    <p class="disclosure"><strong>Bebe is an AI assistant</strong>, not a person. It can make mistakes and only uses Star's public product &amp; policy info. It can't see orders, process returns or access accounts — see <a href="https://beberaygardon.myshopify.com/pages/contact" target="_blank" rel="noopener">Contact</a> or <a href="https://beberaygardon.myshopify.com/pages/refunds-returns" target="_blank" rel="noopener">Refunds &amp; Returns</a>. Legal/tax info is general only, not professional advice.</p>
+    <section class="layout">
+      <aside id="history" class="history" hidden>
+        <button id="new-chat" type="button">+ New chat</button>
+        <ul id="conv-list"></ul>
+      </aside>
+      <section class="chat" aria-label="Chat with Bebe AI">
+        <div class="chat-head">
+          <div class="chips">
+            <button type="button" data-prompt="Help me put together a pastel goth outfit.">Pastel goth outfit</button>
+            <button type="button" data-prompt="Show me something kawaii under $30.">Kawaii under $30</button>
+            <button type="button" data-prompt="How does sizing work at Star?">Size guide</button>
+            <button type="button" data-prompt="What's the return policy?">Returns</button>
+            <button type="button" data-prompt="Give me 3 low-budget marketing ideas for a small online fashion store.">Store marketing tips</button>
+          </div>
+          <button id="speaker" type="button" class="icon" aria-pressed="false" title="Turn Bebe's voice on">🔇</button>
+        </div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="chat-form">
+          <label class="sr-only" for="prompt">Message Bebe AI</label>
+          <div class="composer">
+            <textarea id="prompt" rows="2" maxlength="2000" placeholder="Ask about styles, products, sizing, or running your store…" required></textarea>
+            <button id="mic" type="button" class="icon" title="Speak your message" hidden>🎙️</button>
+            <button id="send" type="submit">Send ↑</button>
+          </div>
+          <div class="composer-foot"><span id="mode-note">Guest chats aren't saved — they disappear when you close the page.</span><span id="count">0/2000</span></div>
+        </form>
+      </section>
+    </section>
+    <footer>Test version · Never share passwords or payment details in chat.<br><span class="privacy">Privacy: your messages are sent to AI providers to generate replies — Google Gemini, with Groq as backup. Free-tier Gemini may use chats to improve Google's services. Signed-in chat history is stored in our database and only visible to you.</span></footer>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
